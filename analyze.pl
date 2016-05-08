@@ -25,6 +25,8 @@ sub to_hex { join '', map sprintf ('%02x', ord $_), split '', shift }
 
 my $path = shift // die "file argument missing";
 
+
+# file data extraction
 my $data = read_binary $path;
 my %file_data;
 my $offset = 0;
@@ -54,7 +56,7 @@ while ($offset < length $data) {
 
 	die "end has non-null length: $obj{length} at offset $offset" unless $obj{sym} ne "END\0" or $obj{length} == 0;
 
-	$obj{data} = substr $data, $offset, $obj{length};
+	$obj{raw_data} = substr $data, $offset, $obj{length};
 	$offset += $obj{length};
 	push @{$file_data{objects}}, \%obj;
 
@@ -69,10 +71,10 @@ die "invalid close tag before end of file at offset $offset" unless $offset == l
 
 
 
-
-my %obj_ids;
+# INST data digesting
+my %inst_ids;
 for my $obj (grep $_->{sym} eq 'INST', @{$file_data{objects}}) {
-	my $data = $obj->{data};
+	my $data = $obj->{raw_data};
 	my %inst_data;
 	my $offset = 0;
 	
@@ -85,7 +87,7 @@ for my $obj (grep $_->{sym} eq 'INST', @{$file_data{objects}}) {
 		$flags = substr $data, $offset, 1;
 		$offset += 1;
 	} else {
-		die "unknown typeflag: " . to_hex($typeflag);
+		die "unknown typeflag: " . to_hex(chr $typeflag);
 	}
 	$inst_data{flags} = $flags;
 
@@ -102,12 +104,49 @@ for my $obj (grep $_->{sym} eq 'INST', @{$file_data{objects}}) {
 	# say join '', (unpack "b16", $inst_data{i1});
 	say $obj->{length} - $offset, " remaining:  $inst_data{id} : $inst_data{name_length} : '$inst_data{name}'";
 
-	die "object id reused $inst_data{id}" if exists $obj_ids{$inst_data{id}};
-	$obj_ids{$inst_data{id}} = $obj;
+	die "object id reused $inst_data{id}" if exists $inst_ids{$inst_data{id}};
+	$inst_ids{$inst_data{id}} = $obj;
 	$obj->{data} = \%inst_data;
 }
+$file_data{inst_by_id} = \%inst_ids;
 
-$file_data{objects_by_id} = \%obj_ids;
+
+say "-\n" x 3;
+
+# prop data processing
+for my $obj (grep $_->{sym} eq 'PROP', @{$file_data{objects}}) {
+	my $data = $obj->{raw_data};
+	my %prop_data;
+	my $offset = 0;
+	
+	my $typeflag = unpack 'C', substr $data, $offset, 1;
+	my $flags;
+	if (($typeflag & 0xf0) == 0xf0) {
+		$flags = substr $data, $offset, 2;
+		$offset += 2;
+	} elsif (($typeflag & 0xf0) == 0x40 or ($typeflag & 0xf0) == 0xE0) {
+		$flags = substr $data, $offset, 1;
+		$offset += 1;
+	} else {
+		die "unknown typeflag: " . to_hex(chr $typeflag);
+	}
+	$prop_data{flags} = $flags;
+
+	@prop_data{qw/ id name_length /} = unpack 'LL', substr $data, $offset, 0x8;
+	$offset += 0x8;
+
+	$prop_data{name} = substr $data, $offset, $prop_data{name_length};
+	$offset += $prop_data{name_length};
+
+
+	say to_hex ($prop_data{flags});
+	say $obj->{length} - $offset, " remaining:  $prop_data{id} : $prop_data{name_length} : '$prop_data{name}'";
+
+	die "object id reused $prop_data{id}" unless exists $file_data{inst_by_id}{$prop_data{id}};
+	push @{$file_data{inst_by_id}{$prop_data{id}}{properties}}, $obj;
+	$obj->{data} = \%prop_data;
+}
+
 
 
 # say Dumper \%file_data;
