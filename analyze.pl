@@ -7,6 +7,22 @@ use feature 'say';
 use File::Slurper qw/ read_binary /;
 use Data::Dumper;
 
+
+
+
+
+
+
+sub to_hex { join '', map sprintf ('%02x', ord $_), split '', shift }
+
+
+
+
+
+
+
+
+
 my $path = shift // die "file argument missing";
 
 my $data = read_binary $path;
@@ -52,30 +68,49 @@ die "invalid close tag: $file_data{close_tag} at offset $offset" unless $file_da
 die "invalid close tag before end of file at offset $offset" unless $offset == length $data;
 
 
-say Dumper \%file_data;
 
 
-
+my %obj_ids;
 for my $obj (grep $_->{sym} eq 'INST', @{$file_data{objects}}) {
 	my $data = $obj->{data};
 	my %inst_data;
 	my $offset = 0;
 	
-	@inst_data{qw/ i1 i2 name_length /} = unpack 'SLL', substr $data, $offset, 0xa;
-	$offset += 0xa;
+	my $typeflag = unpack 'C', substr $data, $offset, 1;
+	my $flags;
+	if (($typeflag & 0xf0) == 0xf0) {
+		$flags = substr $data, $offset, 2;
+		$offset += 2;
+	} elsif (($typeflag & 0xf0) == 0x40) {
+		$flags = substr $data, $offset, 1;
+		$offset += 1;
+	} else {
+		die "unknown typeflag: " . to_hex($typeflag);
+	}
+	$inst_data{flags} = $flags;
+
+	@inst_data{qw/ id name_length /} = unpack 'LL', substr $data, $offset, 0x8;
+	$offset += 0x8;
 
 	$inst_data{name} = substr $data, $offset, $inst_data{name_length};
 	$offset += $inst_data{name_length};
 
 	@inst_data{qw/ i3 i4 /} = unpack 'LL', substr $data, $offset, 0x8;
 	$offset += 0x8;
-	# die "n1 not null: $inst_data{n1}" unless $inst_data{n1} == 0;
 
-	say "$inst_data{name}";
-	say "i have ", $obj->{length} - $offset, " length remaining: $obj->{length} - $offset : $inst_data{name_length}";
+	say to_hex ($inst_data{flags});
+	# say join '', (unpack "b16", $inst_data{i1});
+	say $obj->{length} - $offset, " remaining:  $inst_data{id} : $inst_data{name_length} : '$inst_data{name}'";
+
+	die "object id reused $inst_data{id}" if exists $obj_ids{$inst_data{id}};
+	$obj_ids{$inst_data{id}} = $obj;
+	$obj->{data} = \%inst_data;
 }
 
+$file_data{objects_by_id} = \%obj_ids;
 
+
+# say Dumper \%file_data;
 
 
 
