@@ -52,7 +52,50 @@ die "invalid close tag: $file_data{close_tag} at offset $offset" unless $file_da
 die "invalid close tag before end of file at offset $offset" unless $offset == length $data;
 
 
-
 say Dumper \%file_data;
+
+
+
+for my $obj (grep $_->{sym} eq 'INST', @{$file_data{objects}}) {
+	my $data = $obj->{data};
+	my %inst_data;
+	my $offset = 0;
+	
+	@inst_data{qw/ i1 i2 name_length /} = unpack 'SLL', substr $data, $offset, 0xa;
+	$offset += 0xa;
+
+	$inst_data{name} = substr $data, $offset, $inst_data{name_length};
+	$offset += $inst_data{name_length};
+
+	@inst_data{qw/ i3 i4 /} = unpack 'LL', substr $data, $offset, 0x8;
+	$offset += 0x8;
+	# die "n1 not null: $inst_data{n1}" unless $inst_data{n1} == 0;
+
+	say "$inst_data{name}";
+	say "i have ", $obj->{length} - $offset, " length remaining: $obj->{length} - $offset : $inst_data{name_length}";
+}
+
+
+
+
+
+
+# my %ids;
+# for my $obj (@{$file_data{objects}}) {
+# 	if ($obj->{sym} eq "INST") {
+# 		if (exists $ids{$obj->{i1}}) {
+# 			warn "$obj->{i1} already exists!";
+# 		} else {
+# 			$ids{$obj->{i1}} = $obj;
+# 		}
+# 	}
+# }
+# say join ',', sort keys %ids;
+
+# all INST tags have some significant length
+# say join ',', sort map $_->{length}, grep $_->{sym} eq "INST", @{$file_data{objects}};
+
+
+
 
 # 3C726F626C6F782189FF0D0A1A0A0000
