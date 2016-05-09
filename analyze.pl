@@ -105,12 +105,22 @@ for my $obj (grep $_->{sym} eq 'INST', @{$file_data{objects}}) {
 	$inst_data{name} = substr $data, $offset, $inst_data{name_length};
 	$offset += $inst_data{name_length};
 
-	@inst_data{qw/ i3 i4 /} = unpack 'LL', substr $data, $offset, 0x8;
-	$offset += 0x8;
+	$inst_data{i_type} = unpack 'C', substr $data, $offset, 1;
+	$offset += 1;
+	if ($inst_data{i_type} == 0) {
+		@inst_data{qw/ i3 i4 /} = unpack 'LL', substr $data, $offset, 8;
+		$offset += 8;
+	} elsif (($typeflag & 0x0f) == 0x07 and $inst_data{i_type} == 1) {
+		@inst_data{qw/ i6 i3 i4 i5 /} = unpack 'SLLC', substr $data, $offset, 11;
+		$offset += 11;
+	} elsif ($inst_data{i_type} == 1) {
+		@inst_data{qw/ i3 i4 i5 /} = unpack 'LLC', substr $data, $offset, 9;
+		$offset += 9;
+	}
 
-	say to_hex ($inst_data{flags});
+	# say ;
 	# say join '', (unpack "b16", $inst_data{i1});
-	say $obj->{length} - $offset, " remaining: $inst_data{id} : $inst_data{name_length} : '$inst_data{name}'";
+	say to_hex ($inst_data{flags}), " : ", $obj->{length} - $offset, " remaining $inst_data{id} : $inst_data{i_type} : $inst_data{i3} : $inst_data{i4} : '$inst_data{name}'";
 
 	die "object id reused $inst_data{id}" if exists $inst_ids{$inst_data{id}};
 	$inst_ids{$inst_data{id}} = $obj;
@@ -239,7 +249,7 @@ for my $obj (grep $_->{sym} eq 'PROP', @{$file_data{objects}}) {
 	}
 
 	# say to_hex ($prop_data{flags});
-	say $obj->{length} - $offset, " remaining: $prop_data{value_type} : '$prop_data{name}'($prop_data{name_length}) : $prop_data{value}"
+	# say $obj->{length} - $offset, " remaining: $prop_data{value_type} : '$prop_data{name}'($prop_data{name_length}) : $prop_data{value}"
 		; # if $obj->{length} != $offset;
 
 	die "object id reused $prop_data{id}" unless exists $file_data{inst_by_id}{$prop_data{id}};
