@@ -83,21 +83,21 @@ for my $obj (grep $_->{sym} eq 'INST', @{$file_data{objects}}) {
 		$inst_data{flags} = substr $data, $offset, 2;
 		$offset += 2;
 
-		@inst_data{qw/ id name_length /} = unpack 'LL', substr $data, $offset, 0x8;
-		$offset += 0x8;
+		@inst_data{qw/ id name_length /} = unpack 'LL', substr $data, $offset, 8;
+		$offset += 8;
 	} elsif (($typeflag & 0xf0) == 0x40) {
 		$inst_data{flags} = substr $data, $offset, 1;
 		$offset += 1;
 
-		my ($val) = unpack 'L', substr $data, $offset, 0x4;
-		$offset += 0x8;
+		my ($val) = unpack 'L', substr $data, $offset, 4;
+		$offset += 8;
 		@inst_data{qw/ id name_length /} = ($val, $val);
 	} elsif (($typeflag & 0xf0) == 0xE0) {
 		$inst_data{flags} = substr $data, $offset, 1;
 		$offset += 1;
 
-		@inst_data{qw/ id name_length /} = unpack 'LL', substr $data, $offset, 0x8;
-		$offset += 0x8;
+		@inst_data{qw/ id name_length /} = unpack 'LL', substr $data, $offset, 8;
+		$offset += 8;
 	} else {
 		die "unknown typeflag: " . to_hex(chr $typeflag);
 	}
@@ -132,22 +132,26 @@ for my $obj (grep $_->{sym} eq 'PROP', @{$file_data{objects}}) {
 		$prop_data{flags} = substr $data, $offset, 2;
 		$offset += 2;
 
-		@prop_data{qw/ id name_length /} = unpack 'LL', substr $data, $offset, 0x8;
-		$offset += 0x8;
+		@prop_data{qw/ id name_length /} = unpack 'LL', substr $data, $offset, 8;
+		$offset += 8;
 	} elsif (($typeflag & 0xf0) == 0x40) {
 		$prop_data{flags} = substr $data, $offset, 1;
 		$offset += 1;
 
-		my ($val) = unpack 'L', substr $data, $offset, 0x4;
-		$offset += 0x8;
+		my ($val) = unpack 'L', substr $data, $offset, 4;
+		$offset += 8;
 		@prop_data{qw/ id name_length /} = ($val, $val);
 	} elsif (($typeflag & 0xf0) == 0xE0) {
 		$prop_data{flags} = substr $data, $offset, 1;
 		$offset += 1;
 
-		@prop_data{qw/ id name_length /} = unpack 'LL', substr $data, $offset, 0x8;
-		$offset += 0x8;
+		@prop_data{qw/ id name_length /} = unpack 'LL', substr $data, $offset, 8;
+		$offset += 8;
+		# typeflag 0xE does somethin really wierd with the value type
+		# there's a Name string value which has 5 bytes as it's length with garbage data for some reason
 	} else {
+		# something really wierd with a 0xFF typeflag, does something strange to the value
+		# it seems to add some junk-like data after the value
 		die "unknown typeflag: " . to_hex(chr $typeflag);
 	}
 
@@ -157,9 +161,86 @@ for my $obj (grep $_->{sym} eq 'PROP', @{$file_data{objects}}) {
 	$prop_data{value_type} = unpack 'C', substr $data, $offset, 1;
 	$offset += 1;
 
+	if ($prop_data{value_type} eq 1) {
+		$prop_data{value_length} = unpack 'L', substr $data, $offset, 4;
+		$offset += 4;
 
-	say to_hex ($prop_data{flags});
-	say $obj->{length} - $offset, " remaining: $prop_data{id} : $prop_data{name_length} : '$prop_data{name}'";
+		$prop_data{value} = substr $data, $offset, $prop_data{value_length};
+		$offset += $prop_data{value_length};
+		# say "got string: $prop_data{value}";
+	} elsif ($prop_data{value_type} eq 2) {
+		$prop_data{value} = unpack 'C', substr $data, $offset, 1;
+		$offset += 1;
+
+		# say "got bool: $prop_data{value}";
+	} elsif ($prop_data{value_type} eq 3) {
+		$prop_data{value} = unpack 'L', substr $data, $offset, 4;
+		$offset += 4;
+
+		# say "got unknown value (supposed to be numerical, but doesn't look like one): $prop_data{value}";
+	} elsif ($prop_data{value_type} eq 4) {
+		$prop_data{value} = unpack 'L', substr $data, $offset, 4;
+		$offset += 4;
+
+		# say "got unknown value (some numerical?): $prop_data{value}";
+	} elsif ($prop_data{value_type} eq 5) {
+		$prop_data{value} = unpack 'd', substr $data, $offset, 8;
+		$offset += 8;
+
+		# say "got unknown value (assumed a double): $prop_data{value}";
+	} elsif ($prop_data{value_type} eq 11) {
+		$prop_data{value} = unpack 'L', substr $data, $offset, 4;
+		$offset += 4;
+
+		# say "got unknown value (color type): $prop_data{value}";
+	} elsif ($prop_data{value_type} eq 12) {
+		$prop_data{value} = [unpack 'LLL', substr $data, $offset, 12];
+		$offset += 12;
+
+		# say "got unknown value (color3 type?): ", Dumper $prop_data{value};
+	} elsif ($prop_data{value_type} eq 14) {
+		$prop_data{value} = [unpack 'LLL', substr $data, $offset, 12];
+		$offset += 12;
+
+		# say "got unknown value (vector3 type?): ", Dumper $prop_data{value};
+	} elsif ($prop_data{value_type} eq 16) {
+		$prop_data{cframe_type} = unpack 'C', substr $data, $offset, 1;
+		$offset += 1;
+		if ($prop_data{cframe_type} == 0) {
+			# i don't know this format and unpacking 12 longs just doesn't make sense
+			# probably has a set of floats somewhere in there
+			$prop_data{value} = substr $data, $offset, 0x30;
+			$offset += 0x30;
+		} elsif ($prop_data{cframe_type} == 2) {
+			$prop_data{value} = [unpack 'LLL', substr $data, $offset, 12];
+			$offset += 12;
+		} else {
+			warn "unknown cframe_type: $prop_data{cframe_type}";
+		}
+
+		# say "got some cframe value (type $prop_data{cframe_type}): ", Dumper $prop_data{value};
+	} elsif ($prop_data{value_type} eq 18) {
+		$prop_data{value} = unpack 'L', substr $data, $offset, 4;
+		$offset += 4;
+
+		# say "got unknown value (enum type?): $prop_data{value}";
+	} elsif ($prop_data{value_type} eq 19) {
+		$prop_data{value} = unpack 'L', substr $data, $offset, 4;
+		$offset += 4;
+
+		# say "got unknown value (supposed to be a part pointer?): $prop_data{value}";
+	} elsif ($prop_data{value_type} eq 25) {
+		$prop_data{value} = unpack 'C', substr $data, $offset, 1;
+		$offset += 1;
+
+		# say "got unknown value (??? type?): $prop_data{value}";
+	} else {
+		warn "unknown property value type: $prop_data{value_type}";
+	}
+
+	# say to_hex ($prop_data{flags});
+	say $obj->{length} - $offset, " remaining: $prop_data{value_type} : '$prop_data{name}'($prop_data{name_length}) : $prop_data{value}"
+		; # if $obj->{length} != $offset;
 
 	die "object id reused $prop_data{id}" unless exists $file_data{inst_by_id}{$prop_data{id}};
 	push @{$file_data{inst_by_id}{$prop_data{id}}{properties}}, $obj;
