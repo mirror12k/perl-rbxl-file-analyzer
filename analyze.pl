@@ -40,7 +40,7 @@ $offset += 0x10;
 
 die "n1 not null: $file_data{n1}" unless $file_data{n1} == 0;
 die "n2 not null: $file_data{n2}" unless $file_data{n2} == 0;
-die "strange i2: $file_data{i1}, $file_data{i2}" unless $file_data{i1} + 2 == $file_data{i2};
+warn "strange i2: $file_data{i1}, $file_data{i2}" unless $file_data{i1} + 2 == $file_data{i2};
 
 $file_data{objects} = [];
 while ($offset < length $data) {
@@ -213,6 +213,11 @@ for my $obj (grep $_->{sym} eq 'PROP', @{$file_data{objects}}) {
 		$offset += 12;
 
 		# say "got unknown value (vector3 type?): ", Dumper $prop_data{value};
+	} elsif ($prop_data{value_type} eq 15) {
+		$prop_data{value} = [unpack 'CSLL', substr $data, $offset, 11];
+		$offset += 11;
+
+		# say "got unknown value (ambient type?): ", Dumper $prop_data{value};
 	} elsif ($prop_data{value_type} eq 16) {
 		$prop_data{cframe_type} = unpack 'C', substr $data, $offset, 1;
 		$offset += 1;
@@ -239,6 +244,11 @@ for my $obj (grep $_->{sym} eq 'PROP', @{$file_data{objects}}) {
 		$offset += 4;
 
 		# say "got unknown value (supposed to be a part pointer?): $prop_data{value}";
+	} elsif ($prop_data{value_type} eq 22) {
+		$prop_data{value} = [unpack 'CSLL', substr $data, $offset, 11];
+		$offset += 11;
+
+		# say "got unknown value (surface values type?): ", Dumper $prop_data{value};
 	} elsif ($prop_data{value_type} eq 25) {
 		$prop_data{value} = unpack 'C', substr $data, $offset, 1;
 		$offset += 1;
@@ -249,8 +259,9 @@ for my $obj (grep $_->{sym} eq 'PROP', @{$file_data{objects}}) {
 	}
 
 	# say to_hex ($prop_data{flags});
-	# say $obj->{length} - $offset, " remaining: $prop_data{value_type} : '$prop_data{name}'($prop_data{name_length}) : $prop_data{value}"
-		; # if $obj->{length} != $offset;
+	say to_hex ($prop_data{flags}), " : ", 
+		$obj->{length} - $offset, " remaining: $prop_data{value_type} : '$prop_data{name}'($prop_data{name_length}) : $prop_data{value}"
+			if $obj->{length} != $offset;
 
 	die "object id reused $prop_data{id}" unless exists $file_data{inst_by_id}{$prop_data{id}};
 	push @{$file_data{inst_by_id}{$prop_data{id}}{properties}}, $obj;
