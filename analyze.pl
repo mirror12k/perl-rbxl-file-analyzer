@@ -85,12 +85,19 @@ for my $obj (grep $_->{sym} eq 'INST', @{$file_data{objects}}) {
 
 		@inst_data{qw/ id name_length /} = unpack 'LL', substr $data, $offset, 0x8;
 		$offset += 0x8;
-	} elsif (($typeflag & 0xf0) == 0x40 or ($typeflag & 0xf0) == 0xE0) {
+	} elsif (($typeflag & 0xf0) == 0x40) {
 		$inst_data{flags} = substr $data, $offset, 1;
 		$offset += 1;
+
 		my ($val) = unpack 'L', substr $data, $offset, 0x4;
 		$offset += 0x8;
 		@inst_data{qw/ id name_length /} = ($val, $val);
+	} elsif (($typeflag & 0xf0) == 0xE0) {
+		$inst_data{flags} = substr $data, $offset, 1;
+		$offset += 1;
+
+		@inst_data{qw/ id name_length /} = unpack 'LL', substr $data, $offset, 0x8;
+		$offset += 0x8;
 	} else {
 		die "unknown typeflag: " . to_hex(chr $typeflag);
 	}
@@ -127,12 +134,19 @@ for my $obj (grep $_->{sym} eq 'PROP', @{$file_data{objects}}) {
 
 		@prop_data{qw/ id name_length /} = unpack 'LL', substr $data, $offset, 0x8;
 		$offset += 0x8;
-	} elsif (($typeflag & 0xf0) == 0x40 or ($typeflag & 0xf0) == 0xE0) {
+	} elsif (($typeflag & 0xf0) == 0x40) {
 		$prop_data{flags} = substr $data, $offset, 1;
 		$offset += 1;
+
 		my ($val) = unpack 'L', substr $data, $offset, 0x4;
 		$offset += 0x8;
 		@prop_data{qw/ id name_length /} = ($val, $val);
+	} elsif (($typeflag & 0xf0) == 0xE0) {
+		$prop_data{flags} = substr $data, $offset, 1;
+		$offset += 1;
+
+		@prop_data{qw/ id name_length /} = unpack 'LL', substr $data, $offset, 0x8;
+		$offset += 0x8;
 	} else {
 		die "unknown typeflag: " . to_hex(chr $typeflag);
 	}
